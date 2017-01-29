@@ -550,7 +550,7 @@ int main(int argc, char** argv) {
 
   TFile demo("htt_mssm_demo.root", "RECREATE");
 
-  bool do_morphing = true;
+  bool do_morphing = false;
   map<string, RooAbsReal *> mass_var = {
     {"ggh_htautau", &mh}, {"ggH_Htautau", &mH}, {"ggA_Atautau", &mA},
     {"bbh_htautau", &mh}, {"bbH_Htautau", &mH}, {"bbA_Atautau", &mA}
@@ -570,41 +570,53 @@ int main(int argc, char** argv) {
                              "norm", true, false, false, &demo);
       }
     }
+    cb.AddWorkspace(ws);
+    cb.cp().process(ch::JoinStr({signal_types["ggH"], signal_types["bbH"]})).ExtractPdfs(cb, "htt", "$BIN_$PROCESS_morph");
   }
   demo.Close();
-  cb.AddWorkspace(ws);
-  cb.cp().process(ch::JoinStr({signal_types["ggH"], signal_types["bbH"]})).ExtractPdfs(cb, "htt", "$BIN_$PROCESS_morph");
 
 
  //Write out datacards. Naming convention important for rest of workflow. We
  //make one directory per chn-cat, one per chn and cmb. In this code we only
  //store the individual datacards for each directory to be combined later, but
  //note that it's also possible to write out the full combined card with CH
+
   string output_prefix = "output/";
   if(output_folder.compare(0,1,"/") == 0) output_prefix="";
-  ch::CardWriter writer(output_prefix + output_folder + "/$TAG/$BIN.txt",
-                        output_prefix + output_folder + "/$TAG/htt_input.root");
-  // We're not using mass as an identifier - which we need to tell the CardWriter
-  // otherwise it will see "*" as the mass value for every object and skip it
-  writer.SetWildcardMasses({});
-  writer.SetVerbosity(1);
+  if (do_morphing) {
+    ch::CardWriter writer(output_prefix + output_folder + "/$TAG/$BIN.txt",
+                          output_prefix + output_folder + "/$TAG/htt_input.root");
+    // We're not using mass as an identifier - which we need to tell the CardWriter
+    // otherwise it will see "*" as the mass value for every object and skip it
+    writer.SetWildcardMasses({});
+    writer.SetVerbosity(1);
 
-  writer.WriteCards("cmb", cb);
-  for (auto chn : chns) {
-    if(chn == std::string("zmm"))
-    {
-        continue;
+    writer.WriteCards("cmb", cb);
+    for (auto chn : chns) {
+      if(chn == std::string("zmm"))
+      {
+          continue;
+      }
+      // per-channel
+      writer.WriteCards(chn, cb.cp().channel({chn, "zmm"}));
+      // And per-channel-category
+      writer.WriteCards("htt_"+chn+"_8_13TeV", cb.cp().channel({chn,"zmm"}).bin_id({8, 10, 11, 12}));
+      writer.WriteCards("htt_"+chn+"_9_13TeV", cb.cp().channel({chn,"zmm"}).bin_id({9, 13, 14, 15}));
     }
-    // per-channel
-    writer.WriteCards(chn, cb.cp().channel({chn, "zmm"}));
-    // And per-channel-category
-    writer.WriteCards("htt_"+chn+"_8_13TeV", cb.cp().channel({chn,"zmm"}).bin_id({8, 10, 11, 12}));
-    writer.WriteCards("htt_"+chn+"_9_13TeV", cb.cp().channel({chn,"zmm"}).bin_id({9, 13, 14, 15}));
+    // For btag/nobtag areas want to include control regions. This will
+    // work even if the extra categories aren't there.
+    writer.WriteCards("htt_cmb_8_13TeV", cb.cp().bin_id({8, 10, 11, 12}));
+    writer.WriteCards("htt_cmb_9_13TeV", cb.cp().bin_id({9, 13, 14, 15}));
+  } else {
+    ch::CardWriter writer(output_prefix + output_folder + "/$TAG/$MASS/$BIN.txt",
+                          output_prefix + output_folder + "/$TAG/common/htt_input.root");
+    // We're not using mass as an identifier - which we need to tell the CardWriter
+    // otherwise it will see "*" as the mass value for every object and skip it
+    // writer.SetWildcardMasses({});
+    writer.SetVerbosity(1);
+
+    writer.WriteCards("cmb", cb);
   }
-  // For btag/nobtag areas want to include control regions. This will
-  // work even if the extra categories aren't there.
-  writer.WriteCards("htt_cmb_8_13TeV", cb.cp().bin_id({8, 10, 11, 12}));
-  writer.WriteCards("htt_cmb_9_13TeV", cb.cp().bin_id({9, 13, 14, 15}));
 
   cb.PrintAll();
   cout << " done\n";
